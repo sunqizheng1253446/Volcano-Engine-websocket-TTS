@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"Volcano-Engine-websocket-TTS/config"
@@ -23,8 +23,9 @@ import (
 // 应用程序配置
 var appConfig *config.Config
 var byteDanceURL *url.URL
-var activeConnections sync.WaitGroup
+var activeConnections atomic.Int32 // 使用原子计数器替代WaitGroup
 var semaphore chan struct{} // 用于控制并发调用数量
+var startTime time.Time // 服务启动时间
 
 // 协议相关常量
 const (
@@ -78,6 +79,9 @@ type SynthResp struct {
 
 // 初始化函数
 func init() {
+	// 记录服务启动时间
+	startTime = time.Now()
+	
 	// 初始化应用配置
 	appConfig = config.LoadConfig()
 	
@@ -100,7 +104,7 @@ func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, er
 			ErrTextTooLong, len(text), appConfig.MaxTextLength)
 	}
 
-	reqID := uuid.Must(uuid.NewV4()).String()
+	reqID := uuid.NewV4().String()
 	params := make(map[string]map[string]interface{})
 	params["app"] = make(map[string]interface{})
 	params["app"]["appid"] = appConfig.ByteDanceAppID
@@ -160,11 +164,11 @@ func parseByteDanceResponse(res []byte) (resp SynthResp, err error) {
 		return resp, errors.New("invalid response: too short")
 	}
 
-	protoVersion := res[0] >> 4
+	// protoVersion := res[0] >> 4
 	headSize := res[0] & 0x0f
 	messageType := res[1] >> 4
 	messageTypeSpecificFlags := res[1] & 0x0f
-	serializationMethod := res[2] >> 4
+	// serializationMethod := res[2] >> 4
 	messageCompression := res[2] & 0x0f
 	// reserve := res[3]
 
@@ -217,12 +221,11 @@ func parseByteDanceResponse(res []byte) (resp SynthResp, err error) {
 		err = fmt.Errorf("server error (code: %d): %s", code, errorMsg)
 
 	case 0xc: // frontend message
-		var msgSize int32
 		if len(payload) < 4 {
 			return resp, errors.New("invalid frontend message: insufficient data")
 		}
 
-		msgSize = int32(binary.BigEndian.Uint32(payload[0:4]))
+		// 直接跳过msgSize
 		frontendPayload := payload[4:]
 
 		// 如果是压缩的前端消息，进行解压缩
@@ -357,10 +360,11 @@ type ErrorResponse struct {
 func handleOpenAITTSRequest(c *gin.Context) {
 	// 增加活动连接计数
 	activeConnections.Add(1)
-	defer activeConnections.Done()
+	defer activeConnections.Add(-1)
 
 	// 验证并发连接数
-	if activeConnections.WaitGroup.WaitCount() > appConfig.MaxConnections {
+	currentConnections := activeConnections.Load()
+	if currentConnections > int32(appConfig.MaxConnections) {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{
 			Error:   "service_overloaded",
 			Code:    http.StatusServiceUnavailable,
@@ -472,9 +476,7 @@ func handleOpenAITTSRequest(c *gin.Context) {
 // 健康检查端点
 func healthCheck(c *gin.Context) {
 	// 获取当前活动连接数
-	var activeConns int32
-	// 注意：这里使用反射获取活动连接数，实际项目中可能需要使用更精确的计数方法
-	activeConns = int32(activeConnections.WaitGroup.WaitCount())
+	activeConns := activeConnections.Load()
 	
 	// 获取当前并发调用数
 	currentCalls := len(semaphore)
@@ -489,7 +491,7 @@ func healthCheck(c *gin.Context) {
 		"max_connections":    appConfig.MaxConnections,
 		"current_calls":      currentCalls,
 		"max_concurrent_calls": appConfig.MaxConcurrentCalls,
-		"uptime_seconds":     int(time.Since(time.Now()).Seconds()), // 实际项目中应记录启动时间
+		"uptime_seconds":     int(time.Since(startTime).Seconds()),
 	})
 }
 
