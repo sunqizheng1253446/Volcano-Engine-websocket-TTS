@@ -1,6 +1,6 @@
-# 火山引擎语音合成（TTS）WebSocket客户端
+# 火山引擎语音合成（TTS）WebSocket中转服务
 
-这是一个基于Go语言的火山引擎语音合成（TTS）WebSocket客户端示例程序，用于演示如何通过WebSocket协议与火山引擎TTS服务进行交互。
+这是一个基于Go语言的中转服务程序，用于将OpenAI TTS协议转换为火山引擎TTS WebSocket协议，实现双向协议转换。客户端通过OpenAI TTS协议请求服务后，程序将请求转换为字节跳动的WebSocket协议向字节跳动服务器请求服务，然后将字节跳动服务通过WebSocket返回的流式音频转换为OpenAI TTS流式服务供客户端使用。
 
 ## 功能特性
 
