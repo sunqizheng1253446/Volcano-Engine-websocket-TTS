@@ -43,7 +43,15 @@ go mod tidy
 
 ```bash
 go build
-go run .
+# 设置环境变量并运行
+BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster go run .
+```
+
+或者直接运行构建好的二进制文件：
+
+```bash
+go build
+BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster ./Volcano-Engine-websocket-TTS
 ```
 
 ## 配置说明
@@ -53,10 +61,11 @@ go run .
 | 环境变量 | 类型 | 默认值 | 描述 |
 |---------|------|-------|------|
 | `LISTEN_ADDR` | string | `:8080` | 服务监听地址和端口 |
-| `BYTE_DANCE_ADDR` | string | `openspeech.bytedance.com` | 火山引擎 TTS 服务地址 |
-| `BYTE_DANCE_PATH` | string | `/api/v1/tts/ws_binary` | 火山引擎 TTS API 路径 |
-| `BYTE_DANCE_APP_ID` | string | (必需) | 火山引擎 App ID |
-| `BYTE_DANCE_APP_KEY` | string | (必需) | 火山引擎 App Key |
+| `BYTEDANCE_TTS_ADDR` | string | `openspeech.bytedance.com` | 火山引擎 TTS 服务地址 |
+| `BYTEDANCE_TTS_PATH` | string | `/api/v1/tts/ws_binary` | 火山引擎 TTS API 路径 |
+| `BYTEDANCE_TTS_APP_ID` | string | (必需) | 火山引擎 App ID |
+| `BYTEDANCE_TTS_BEARER_TOKEN` | string | (必需) | 火山引擎认证令牌 |
+| `BYTEDANCE_TTS_CLUSTER` | string | (必需) | 火山引擎集群名称 |
 | `MAX_CONNECTIONS` | int | 100 | 最大并发连接数 |
 | `MAX_CONCURRENT_CALLS` | int | 10 | 最大并发调用数 |
 | `LOG_LEVEL` | string | `info` | 日志级别（debug, info, warn, error） |

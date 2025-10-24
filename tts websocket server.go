@@ -11,17 +11,160 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"sync/atomic"
 	"time"
 
-	"Volcano-Engine-websocket-TTS/config"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	uuid "github.com/satori/go.uuid"
 )
 
+// Config 应用程序配置
+type Config struct {
+	// 服务器配置
+	ServerHost string
+	ServerPort string
+
+	// 字节跳动TTS配置
+	ByteDanceAppID   string
+	ByteDanceToken   string
+	ByteDanceCluster string
+	ByteDanceAddr    string
+	ByteDancePath    string
+
+	// 超时配置
+	DialTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+
+	// 日志配置
+	LogLevel string
+
+	// 性能配置
+	MaxConnections     int
+	MaxRequestSizeMB   int
+	MaxTextLength      int
+	MaxConcurrentCalls int
+}
+
 // 应用程序配置
-var appConfig *config.Config
+var appConfig *Config
+
+// LoadConfig 从环境变量加载配置
+func LoadConfig() *Config {
+	cfg := &Config{
+		// 服务器配置
+		ServerHost: getEnv("SERVER_HOST", "0.0.0.0"),
+		ServerPort: getEnv("SERVER_PORT", "8080"),
+
+		// 字节跳动TTS配置
+	ByteDanceAppID:   getEnv("BYTEDANCE_TTS_APP_ID", "XXX"),
+	ByteDanceToken:   getEnv("BYTEDANCE_TTS_BEARER_TOKEN", "XXX"),
+	ByteDanceCluster: getEnv("BYTEDANCE_TTS_CLUSTER", "xxxx"),
+		ByteDanceAddr:    getEnv("BYTE_DANCE_ADDR", "openspeech.bytedance.com"),
+		ByteDancePath:    getEnv("BYTE_DANCE_PATH", "/api/v1/tts/ws_binary"),
+
+		// 超时配置
+		DialTimeout:  getEnvDuration("DIAL_TIMEOUT", 10*time.Second),
+		ReadTimeout:  getEnvDuration("READ_TIMEOUT", 30*time.Second),
+		WriteTimeout: getEnvDuration("WRITE_TIMEOUT", 30*time.Second),
+
+		// 日志配置
+		LogLevel: getEnv("LOG_LEVEL", "info"),
+
+		// 性能配置
+		MaxConnections:     getEnvInt("MAX_CONNECTIONS", 100),
+		MaxRequestSizeMB:   getEnvInt("MAX_REQUEST_SIZE_MB", 5),
+		MaxTextLength:      getEnvInt("MAX_TEXT_LENGTH", 5000),
+		MaxConcurrentCalls: getEnvInt("MAX_CONCURRENT_CALLS", 10),
+	}
+
+	return cfg
+}
+
+// ValidateConfig 验证配置的有效性
+func (c *Config) ValidateConfig() error {
+	// 验证必要的字节跳动配置，收集所有缺失的环境变量
+	var missingEnvs []string
+
+	if c.ByteDanceAppID == "XXX" {
+		missingEnvs = append(missingEnvs, "BYTEDANCE_TTS_APP_ID")
+	}
+
+	if c.ByteDanceToken == "XXX" {
+		missingEnvs = append(missingEnvs, "BYTEDANCE_TTS_BEARER_TOKEN")
+	}
+
+	if c.ByteDanceCluster == "xxxx" {
+		missingEnvs = append(missingEnvs, "BYTEDANCE_TTS_CLUSTER")
+	}
+
+	// 如果有缺失的环境变量，返回详细的错误信息
+	if len(missingEnvs) > 0 {
+		return fmt.Errorf("missing required environment variables: %v", missingEnvs)
+	}
+
+	// 验证超时设置
+	if c.DialTimeout <= 0 {
+		return fmt.Errorf("DIAL_TIMEOUT must be positive")
+	}
+
+	if c.ReadTimeout <= 0 {
+		return fmt.Errorf("READ_TIMEOUT must be positive")
+	}
+
+	if c.WriteTimeout <= 0 {
+		return fmt.Errorf("WRITE_TIMEOUT must be positive")
+	}
+
+	// 验证性能限制
+	if c.MaxConnections <= 0 {
+		return fmt.Errorf("MAX_CONNECTIONS must be positive")
+	}
+
+	if c.MaxRequestSizeMB <= 0 {
+		return fmt.Errorf("MAX_REQUEST_SIZE_MB must be positive")
+	}
+
+	if c.MaxTextLength <= 0 {
+		return fmt.Errorf("MAX_TEXT_LENGTH must be positive")
+	}
+
+	if c.MaxConcurrentCalls <= 0 {
+		return fmt.Errorf("MAX_CONCURRENT_CALLS must be positive")
+	}
+
+	return nil
+}
+
+// 从环境变量获取字符串值，如果不存在则返回默认值
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// 从环境变量获取整数值，如果不存在或解析失败则返回默认值
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// 从环境变量获取时间段值，如果不存在或解析失败则返回默认值
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
+		}
+	}
+	return defaultValue
+}
 var byteDanceURL *url.URL
 var activeConnections atomic.Int32 // 使用原子计数器替代WaitGroup
 var semaphore chan struct{} // 用于控制并发调用数量
@@ -29,12 +172,10 @@ var startTime time.Time // 服务启动时间
 
 // 协议相关常量
 const (
-	optQuery  string = "query"
 	optSubmit string = "submit"
 )
 
-// 默认协议头部
-var defaultHeader = []byte{0x11, 0x10, 0x11, 0x00}
+
 
 // 错误定义
 var (
@@ -48,19 +189,8 @@ var (
 	ErrAudioWriteFailed    = errors.New("failed to write audio data")
 )
 
-// 协议消息类型映射
-var enumMessageType = map[byte]string{
-	11: "audio-only server response",
-	12: "frontend server response",
-	15: "error message from server",
-}
-
-var enumMessageTypeSpecificFlags = map[byte]string{
-	0: "no sequence number",
-	1: "sequence number > 0",
-	2: "last message from server (seq < 0)",
-	3: "sequence number < 0",
-}
+// 默认协议头部
+var defaultHeader = []byte{0x11, 0x10, 0x11, 0x00}
 
 // OpenAI TTS请求结构
 type OpenAITTSRequest struct {
@@ -83,7 +213,7 @@ func init() {
 	startTime = time.Now()
 	
 	// 初始化应用配置
-	appConfig = config.LoadConfig()
+	appConfig = LoadConfig()
 	
 	// 初始化字节跳动URL
 	byteDanceURL = &url.URL{
@@ -104,16 +234,27 @@ func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, er
 			ErrTextTooLong, len(text), appConfig.MaxTextLength)
 	}
 
+	// 直接使用appConfig中的配置值
+	appID := appConfig.ByteDanceAppID
+	token := appConfig.ByteDanceToken
+	cluster := appConfig.ByteDanceCluster
+
+	// 获取voice_type，优先使用环境变量
+	envVoiceType := os.Getenv("BYTEDANCE_TTS_VOICE_TYPE")
+	if envVoiceType == "" {
+		envVoiceType = voiceType // 如果环境变量未设置，使用传入的参数
+	}
+
 	reqID := uuid.NewV4().String()
 	params := make(map[string]map[string]interface{})
 	params["app"] = make(map[string]interface{})
-	params["app"]["appid"] = appConfig.ByteDanceAppID
-	params["app"]["token"] = "access_token"
-	params["app"]["cluster"] = appConfig.ByteDanceCluster
+	params["app"]["appid"] = appID
+	params["app"]["token"] = token
+	params["app"]["cluster"] = cluster
 	params["user"] = make(map[string]interface{})
 	params["user"]["uid"] = "uid"
 	params["audio"] = make(map[string]interface{})
-	params["audio"]["voice_type"] = voiceType
+	params["audio"]["voice_type"] = envVoiceType
 	params["audio"]["encoding"] = "mp3"
 	params["audio"]["speed_ratio"] = speed
 	params["audio"]["volume_ratio"] = 1.0
@@ -530,11 +671,9 @@ func main() {
 	err := appConfig.ValidateConfig()
 	if err != nil {
 		fmt.Printf("Configuration validation failed: %v\n", err)
-		fmt.Println("Please set the required environment variables before starting the service.")
-		fmt.Println("Required environment variables:")
-		fmt.Println("  - BYTE_DANCE_APPID: Your ByteDance application ID")
-		fmt.Println("  - BYTE_DANCE_TOKEN: Your ByteDance authentication token")
-		fmt.Println("  - BYTE_DANCE_CLUSTER: Your ByteDance cluster name")
+		fmt.Println("Please set the missing environment variables before starting the service.")
+		fmt.Println("Example usage:")
+		fmt.Println("  BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster ./tts_websocket_server")
 		os.Exit(1)
 	}
 
