@@ -61,8 +61,6 @@ BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE
 | 环境变量 | 类型 | 默认值 | 描述 |
 |---------|------|-------|------|
 | `LISTEN_ADDR` | string | `:8080` | 服务监听地址和端口 |
-| `BYTEDANCE_TTS_ADDR` | string | `openspeech.bytedance.com` | 火山引擎 TTS 服务地址 |
-| `BYTEDANCE_TTS_PATH` | string | `/api/v1/tts/ws_binary` | 火山引擎 TTS API 路径 |
 | `BYTEDANCE_TTS_APP_ID` | string | (必需) | 火山引擎 App ID |
 | `BYTEDANCE_TTS_BEARER_TOKEN` | string | (必需) | 火山引擎认证令牌 |
 | `BYTEDANCE_TTS_CLUSTER` | string | (必需) | 火山引擎集群名称 |

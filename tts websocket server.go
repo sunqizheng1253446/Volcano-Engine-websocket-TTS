@@ -31,8 +31,6 @@ type Config struct {
 	ByteDanceToken     string
 	ByteDanceCluster   string
 	ByteDanceVoiceType string
-	ByteDanceAddr      string
-	ByteDancePath      string
 
 	// 超时配置
 	DialTimeout  time.Duration
@@ -64,8 +62,6 @@ func LoadConfig() *Config {
 		ByteDanceToken:     getEnv("BYTEDANCE_TTS_BEARER_TOKEN", "XXX"),
 		ByteDanceCluster:   getEnv("BYTEDANCE_TTS_CLUSTER", "xxxx"),
 		ByteDanceVoiceType: getEnv("BYTEDANCE_TTS_VOICE_TYPE", ""),
-		ByteDanceAddr:      getEnv("BYTE_DANCE_ADDR", "openspeech.bytedance.com"),
-		ByteDancePath:      getEnv("BYTE_DANCE_PATH", "/api/v1/tts/ws_binary"),
 
 		// 超时配置
 		DialTimeout:  getEnvDuration("DIAL_TIMEOUT", 10*time.Second),
@@ -221,11 +217,11 @@ func init() {
 	// 初始化应用配置
 	appConfig = LoadConfig()
 	
-	// 初始化字节跳动URL
+	// 初始化字节跳动URL - 直接硬编码完整URL
 	byteDanceURL = &url.URL{
 		Scheme: "wss",
-		Host:   appConfig.ByteDanceAddr,
-		Path:   appConfig.ByteDancePath,
+		Host:   "openspeech.bytedance.com",
+		Path:   "/api/v1/tts/ws_binary",
 	}
 	
 	// 初始化并发控制信号量
