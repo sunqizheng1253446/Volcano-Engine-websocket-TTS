@@ -44,14 +44,14 @@ go mod tidy
 ```bash
 go build
 # 设置环境变量并运行
-BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster go run .
+BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster BYTEDANCE_TTS_VOICE_TYPE=your_voice_type go run .
 ```
 
 或者直接运行构建好的二进制文件：
 
 ```bash
 go build
-BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster ./Volcano-Engine-websocket-TTS
+BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster BYTEDANCE_TTS_VOICE_TYPE=your_voice_type ./Volcano-Engine-websocket-TTS
 ```
 
 ## 配置说明
@@ -66,6 +66,7 @@ BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE
 | `BYTEDANCE_TTS_APP_ID` | string | (必需) | 火山引擎 App ID |
 | `BYTEDANCE_TTS_BEARER_TOKEN` | string | (必需) | 火山引擎认证令牌 |
 | `BYTEDANCE_TTS_CLUSTER` | string | (必需) | 火山引擎集群名称 |
+| `BYTEDANCE_TTS_VOICE_TYPE` | string | (必需) | 火山引擎语音类型 |
 | `MAX_CONNECTIONS` | int | 100 | 最大并发连接数 |
 | `MAX_CONCURRENT_CALLS` | int | 10 | 最大并发调用数 |
 | `LOG_LEVEL` | string | `info` | 日志级别（debug, info, warn, error） |

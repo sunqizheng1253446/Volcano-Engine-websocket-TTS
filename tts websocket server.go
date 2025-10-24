@@ -27,11 +27,12 @@ type Config struct {
 	ServerPort string
 
 	// 字节跳动TTS配置
-	ByteDanceAppID   string
-	ByteDanceToken   string
-	ByteDanceCluster string
-	ByteDanceAddr    string
-	ByteDancePath    string
+	ByteDanceAppID     string
+	ByteDanceToken     string
+	ByteDanceCluster   string
+	ByteDanceVoiceType string
+	ByteDanceAddr      string
+	ByteDancePath      string
 
 	// 超时配置
 	DialTimeout  time.Duration
@@ -59,11 +60,12 @@ func LoadConfig() *Config {
 		ServerPort: getEnv("SERVER_PORT", "8080"),
 
 		// 字节跳动TTS配置
-	ByteDanceAppID:   getEnv("BYTEDANCE_TTS_APP_ID", "XXX"),
-	ByteDanceToken:   getEnv("BYTEDANCE_TTS_BEARER_TOKEN", "XXX"),
-	ByteDanceCluster: getEnv("BYTEDANCE_TTS_CLUSTER", "xxxx"),
-		ByteDanceAddr:    getEnv("BYTE_DANCE_ADDR", "openspeech.bytedance.com"),
-		ByteDancePath:    getEnv("BYTE_DANCE_PATH", "/api/v1/tts/ws_binary"),
+		ByteDanceAppID:     getEnv("BYTEDANCE_TTS_APP_ID", "XXX"),
+		ByteDanceToken:     getEnv("BYTEDANCE_TTS_BEARER_TOKEN", "XXX"),
+		ByteDanceCluster:   getEnv("BYTEDANCE_TTS_CLUSTER", "xxxx"),
+		ByteDanceVoiceType: getEnv("BYTEDANCE_TTS_VOICE_TYPE", ""),
+		ByteDanceAddr:      getEnv("BYTE_DANCE_ADDR", "openspeech.bytedance.com"),
+		ByteDancePath:      getEnv("BYTE_DANCE_PATH", "/api/v1/tts/ws_binary"),
 
 		// 超时配置
 		DialTimeout:  getEnvDuration("DIAL_TIMEOUT", 10*time.Second),
@@ -98,6 +100,10 @@ func (c *Config) ValidateConfig() error {
 
 	if c.ByteDanceCluster == "xxxx" {
 		missingEnvs = append(missingEnvs, "BYTEDANCE_TTS_CLUSTER")
+	}
+
+	if c.ByteDanceVoiceType == "" {
+		missingEnvs = append(missingEnvs, "BYTEDANCE_TTS_VOICE_TYPE")
 	}
 
 	// 如果有缺失的环境变量，返回详细的错误信息
@@ -238,12 +244,8 @@ func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, er
 	appID := appConfig.ByteDanceAppID
 	token := appConfig.ByteDanceToken
 	cluster := appConfig.ByteDanceCluster
-
-	// 获取voice_type，优先使用环境变量
-	envVoiceType := os.Getenv("BYTEDANCE_TTS_VOICE_TYPE")
-	if envVoiceType == "" {
-		envVoiceType = voiceType // 如果环境变量未设置，使用传入的参数
-	}
+	// 只能使用环境变量中的voice_type
+	voiceType = appConfig.ByteDanceVoiceType
 
 	reqID := uuid.NewV4().String()
 	params := make(map[string]map[string]interface{})
@@ -254,7 +256,7 @@ func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, er
 	params["user"] = make(map[string]interface{})
 	params["user"]["uid"] = "uid"
 	params["audio"] = make(map[string]interface{})
-	params["audio"]["voice_type"] = envVoiceType
+	params["audio"]["voice_type"] = voiceType
 	params["audio"]["encoding"] = "mp3"
 	params["audio"]["speed_ratio"] = speed
 	params["audio"]["volume_ratio"] = 1.0
@@ -673,7 +675,7 @@ func main() {
 		fmt.Printf("Configuration validation failed: %v\n", err)
 		fmt.Println("Please set the missing environment variables before starting the service.")
 		fmt.Println("Example usage:")
-		fmt.Println("  BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster ./tts_websocket_server")
+		fmt.Println("  BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster BYTEDANCE_TTS_VOICE_TYPE=your_voice_type ./tts_websocket_server")
 		os.Exit(1)
 	}
 
