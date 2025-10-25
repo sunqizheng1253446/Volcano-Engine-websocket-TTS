@@ -32,6 +32,9 @@ type Config struct {
 	ByteDanceCluster   string
 	ByteDanceVoiceType string
 
+	// OpenAI TTS认证配置
+	OpenAITTSAPIKey string
+
 	// 超时配置
 	DialTimeout  time.Duration
 	ReadTimeout  time.Duration
@@ -62,6 +65,9 @@ func LoadConfig() *Config {
 		ByteDanceToken:     getEnv("BYTEDANCE_TTS_BEARER_TOKEN", "XXX"),
 		ByteDanceCluster:   getEnv("BYTEDANCE_TTS_CLUSTER", "xxxx"),
 		ByteDanceVoiceType: getEnv("BYTEDANCE_TTS_VOICE_TYPE", ""),
+
+		// OpenAI TTS认证配置
+		OpenAITTSAPIKey: getEnv("OPENAI_TTS_API_KEY", ""),
 
 		// 超时配置
 		DialTimeout:  getEnvDuration("DIAL_TIMEOUT", 10*time.Second),
@@ -167,17 +173,16 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	}
 	return defaultValue
 }
+
 var byteDanceURL *url.URL
 var activeConnections atomic.Int32 // 使用原子计数器替代WaitGroup
-var semaphore chan struct{} // 用于控制并发调用数量
-var startTime time.Time // 服务启动时间
+var semaphore chan struct{}        // 用于控制并发调用数量
+var startTime time.Time            // 服务启动时间
 
 // 协议相关常量
 const (
 	optSubmit string = "submit"
 )
-
-
 
 // 错误定义
 var (
@@ -189,18 +194,41 @@ var (
 	ErrMessageReadFailed   = errors.New("failed to read message")
 	ErrResponseParseFailed = errors.New("failed to parse response")
 	ErrAudioWriteFailed    = errors.New("failed to write audio data")
+	ErrInvalidAPIKey       = errors.New("invalid API key format")
+	ErrUnauthorized        = errors.New("unauthorized access")
 )
+
+// isValidAPIKey 验证API密钥格式是否合法
+// 确保密钥不包含非法符号如括号等
+func isValidAPIKey(key string) bool {
+	// 检查密钥是否为空
+	if key == "" {
+		return false
+	}
+
+	// 检查是否包含非法字符（括号等）
+	illegalChars := "[](){}<>()[]{}<>&^%$#@!~`\"'"
+	for _, char := range key {
+		for _, illegal := range illegalChars {
+			if char == illegal {
+				return false
+			}
+		}
+	}
+
+	return true
+}
 
 // 默认协议头部
 var defaultHeader = []byte{0x11, 0x10, 0x11, 0x00}
 
 // OpenAI TTS请求结构
 type OpenAITTSRequest struct {
-	Model         string  `json:"model" binding:"required"`
-	Input         string  `json:"input" binding:"required"`
-	Voice         string  `json:"voice" binding:"required"`
+	Model          string  `json:"model" binding:"required"`
+	Input          string  `json:"input" binding:"required"`
+	Voice          string  `json:"voice" binding:"required"`
 	ResponseFormat string  `json:"response_format,omitempty"`
-	Speed         float64 `json:"speed,omitempty"`
+	Speed          float64 `json:"speed,omitempty"`
 }
 
 // 合成响应结构
@@ -213,35 +241,36 @@ type SynthResp struct {
 func init() {
 	// 记录服务启动时间
 	startTime = time.Now()
-	
+
 	// 初始化应用配置
 	appConfig = LoadConfig()
-	
+
 	// 初始化字节跳动URL - 直接硬编码完整URL
 	byteDanceURL = &url.URL{
 		Scheme: "wss",
 		Host:   "openspeech.bytedance.com",
 		Path:   "/api/v1/tts/ws_binary",
 	}
-	
+
 	// 初始化并发控制信号量
 	semaphore = make(chan struct{}, appConfig.MaxConcurrentCalls)
 }
 
 // 设置字节跳动TTS请求参数
-func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, error) {
+// 注意：voice_type 参数来自环境变量 BYTEDANCE_TTS_VOICE_TYPE，忽略任何传入的 voiceType 值
+func setupByteDanceInput(text, opt string, speed float64) ([]byte, error) {
 	// 验证文本长度
 	if len(text) > appConfig.MaxTextLength {
-		return nil, fmt.Errorf("%w: text length %d exceeds maximum allowed %d", 
+		return nil, fmt.Errorf("%w: text length %d exceeds maximum allowed %d",
 			ErrTextTooLong, len(text), appConfig.MaxTextLength)
 	}
 
 	// 直接使用appConfig中的配置值
+	// voice_type 参数来自环境变量 BYTEDANCE_TTS_VOICE_TYPE
 	appID := appConfig.ByteDanceAppID
 	token := appConfig.ByteDanceToken
 	cluster := appConfig.ByteDanceCluster
-	// 只能使用环境变量中的voice_type
-	voiceType = appConfig.ByteDanceVoiceType
+	voiceType := appConfig.ByteDanceVoiceType
 
 	reqID := uuid.NewV4().String()
 	params := make(map[string]map[string]interface{})
@@ -262,12 +291,12 @@ func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, er
 	params["request"]["text"] = text
 	params["request"]["text_type"] = "plain"
 	params["request"]["operation"] = opt
-	
+
 	resStr, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal TTS parameters: %w", err)
 	}
-	
+
 	return resStr, nil
 }
 
@@ -382,18 +411,23 @@ func parseByteDanceResponse(res []byte) (resp SynthResp, err error) {
 }
 
 // 实现流式合成并返回音频数据
+// 注意：voiceType 参数被忽略，实际使用的 voice_type 来自环境变量 BYTEDANCE_TTS_VOICE_TYPE
 func streamSynthesize(text, voiceType string, speed float64) ([]byte, error) {
+	// 明确忽略 voiceType 参数以消除静态分析警告
+	_ = voiceType
+
 	// 获取并发控制信号量
 	select {
 	case semaphore <- struct{}{}:
 		defer func() { <-semaphore }()
 	default:
-		return nil, fmt.Errorf("%w: maximum concurrent calls (%d) reached", 
+		return nil, fmt.Errorf("%w: maximum concurrent calls (%d) reached",
 			ErrTooManyConnections, appConfig.MaxConcurrentCalls)
 	}
 
 	// 设置输入参数
-	input, err := setupByteDanceInput(text, voiceType, optSubmit, speed)
+	// 注意：voiceType 参数被忽略，实际使用的 voice_type 来自环境变量 BYTEDANCE_TTS_VOICE_TYPE
+	input, err := setupByteDanceInput(text, optSubmit, speed)
 	if err != nil {
 		return nil, err
 	}
@@ -469,10 +503,12 @@ func streamSynthesize(text, voiceType string, speed float64) ([]byte, error) {
 }
 
 // 将OpenAI语音映射到字节跳动语音
+// 注意：此函数的返回值在当前实现中被忽略，仅用于保持接口兼容性
 func mapOpenAIVoiceToByteDance(openAIVoice string) string {
 	// 这里可以根据实际情况添加映射关系
+	// 注意：实际使用的 voice_type 来自环境变量 BYTEDANCE_TTS_VOICE_TYPE
 	voiceMap := map[string]string{
-		"alloy":   "alloy",     // 需要根据实际的字节跳动语音ID进行映射
+		"alloy":   "alloy", // 需要根据实际的字节跳动语音ID进行映射
 		"echo":    "echo",
 		"fable":   "fable",
 		"onyx":    "onyx",
@@ -510,6 +546,35 @@ func handleOpenAITTSRequest(c *gin.Context) {
 			Message: fmt.Sprintf("Too many concurrent connections, maximum is %d", appConfig.MaxConnections),
 		})
 		return
+	}
+
+	// API密钥验证
+	apiKey := c.GetHeader("Authorization")
+	// 移除可能的Bearer前缀
+	if len(apiKey) > 7 && apiKey[:7] == "Bearer " {
+		apiKey = apiKey[7:]
+	}
+
+	// 验证密钥格式
+	if !isValidAPIKey(apiKey) {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error:   "invalid_api_key",
+			Code:    http.StatusUnauthorized,
+			Message: "API key format is invalid, must not contain illegal characters",
+		})
+		return
+	}
+
+	// 如果服务器配置了API密钥，则验证客户端密钥是否匹配
+	if appConfig.OpenAITTSAPIKey != "" {
+		if apiKey != appConfig.OpenAITTSAPIKey {
+			c.JSON(http.StatusUnauthorized, ErrorResponse{
+				Error:   "unauthorized",
+				Code:    http.StatusUnauthorized,
+				Message: "Invalid API key",
+			})
+			return
+		}
 	}
 
 	// 解析请求体
@@ -563,7 +628,8 @@ func handleOpenAITTSRequest(c *gin.Context) {
 		return
 	}
 
-	// 映射语音类型
+	// 映射语音类型（注意：此参数在实际调用中被忽略，仅用于保持接口兼容性）
+	// 实际使用的 voice_type 来自环境变量 BYTEDANCE_TTS_VOICE_TYPE
 	byteDanceVoice := mapOpenAIVoiceToByteDance(req.Voice)
 
 	// 设置响应头
@@ -574,12 +640,13 @@ func handleOpenAITTSRequest(c *gin.Context) {
 	c.Header("X-Content-Type-Options", "nosniff")
 
 	// 创建流式合成并返回数据
+	// 注意：byteDanceVoice 参数在 streamSynthesize 中被忽略
 	audioData, err := streamSynthesize(req.Input, byteDanceVoice, speed)
 	if err != nil {
 		// 根据错误类型返回适当的HTTP状态码
 		statusCode := http.StatusInternalServerError
 		errorType := "internal_error"
-		
+
 		// 处理已知错误类型
 		switch {
 		case errors.Is(err, ErrTextTooLong):
@@ -591,6 +658,12 @@ func handleOpenAITTSRequest(c *gin.Context) {
 		case errors.Is(err, ErrWebSocketDialFailed):
 			statusCode = http.StatusServiceUnavailable
 			errorType = "upstream_service_unavailable"
+		case errors.Is(err, ErrInvalidAPIKey):
+			statusCode = http.StatusUnauthorized
+			errorType = "invalid_api_key"
+		case errors.Is(err, ErrUnauthorized):
+			statusCode = http.StatusUnauthorized
+			errorType = "unauthorized"
 		}
 
 		c.JSON(statusCode, ErrorResponse{
@@ -616,21 +689,21 @@ func handleOpenAITTSRequest(c *gin.Context) {
 func healthCheck(c *gin.Context) {
 	// 获取当前活动连接数
 	activeConns := activeConnections.Load()
-	
+
 	// 获取当前并发调用数
 	currentCalls := len(semaphore)
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":             "ok",
-		"timestamp":          time.Now().Unix(),
-		"timestamp_iso":      time.Now().Format(time.RFC3339),
-		"service":            "TTS-Transit-Service",
-		"version":            "1.0.0",
-		"active_connections": activeConns,
-		"max_connections":    appConfig.MaxConnections,
-		"current_calls":      currentCalls,
+		"status":               "ok",
+		"timestamp":            time.Now().Unix(),
+		"timestamp_iso":        time.Now().Format(time.RFC3339),
+		"service":              "TTS-Transit-Service",
+		"version":              "1.0.0",
+		"active_connections":   activeConns,
+		"max_connections":      appConfig.MaxConnections,
+		"current_calls":        currentCalls,
 		"max_concurrent_calls": appConfig.MaxConcurrentCalls,
-		"uptime_seconds":     int(time.Since(startTime).Seconds()),
+		"uptime_seconds":       int(time.Since(startTime).Seconds()),
 	})
 }
 
@@ -647,12 +720,12 @@ func setupRoutes(router *gin.Engine) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return
 		}
-		
+
 		c.Next()
 	}))
 

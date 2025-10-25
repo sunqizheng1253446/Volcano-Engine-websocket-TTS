@@ -58,6 +58,8 @@ BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE
 
 服务通过环境变量进行配置。以下是可用的配置项：
 
+> **设计说明**：OpenAI TTS 请求中的 `voice` 参数在当前版本中被忽略，语音类型完全由环境变量 `BYTEDANCE_TTS_VOICE_TYPE` 决定。这是有意为之的设计决策，以确保服务使用统一的语音配置。
+
 | 环境变量 | 类型 | 默认值 | 描述 |
 |---------|------|-------|------|
 | `LISTEN_ADDR` | string | `:8080` | 服务监听地址和端口 |
@@ -65,6 +67,7 @@ BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE
 | `BYTEDANCE_TTS_BEARER_TOKEN` | string | (必需) | 火山引擎认证令牌 |
 | `BYTEDANCE_TTS_CLUSTER` | string | (必需) | 火山引擎集群名称 |
 | `BYTEDANCE_TTS_VOICE_TYPE` | string | (必需) | 火山引擎语音类型 |
+| `OPENAI_TTS_API_KEY` | string | (可选) | OpenAI TTS API 访问密钥，用于验证客户端请求 |
 | `MAX_CONNECTIONS` | int | 100 | 最大并发连接数 |
 | `MAX_CONCURRENT_CALLS` | int | 10 | 最大并发调用数 |
 | `LOG_LEVEL` | string | `info` | 日志级别（debug, info, warn, error） |
@@ -92,11 +95,13 @@ wss://your-server-host/tts/websocket
 {
   "model": "tts-1",
   "input": "这是一段需要转换为语音的文本",
-  "voice": "alloy",
+  "voice": "alloy",  // 注意：此参数在当前版本中被忽略
   "speed": 1.0,
   "response_format": "pcm"
 }
 ```
+
+> **注意**：`voice` 参数在当前版本中被忽略，实际语音类型由环境变量 `BYTEDANCE_TTS_VOICE_TYPE` 确定。保留此参数是为了与 OpenAI TTS API 保持接口兼容性。
 
 #### 响应格式
 
@@ -123,7 +128,10 @@ GET /health
 
 ## 语音映射
 
-以下是 OpenAI 语音名称到火山引擎语音 ID 的映射：
+> **重要说明**：OpenAI TTS 请求中的 `voice` 参数在当前版本中被忽略，不会影响实际的语音合成结果。
+> 语音类型完全由环境变量 `BYTEDANCE_TTS_VOICE_TYPE` 决定。
+
+以下是 OpenAI 语音名称到火山引擎语音 ID 的映射（仅供参考）：
 
 | OpenAI 语音 | 火山引擎语音 ID |
 |------------|--------------|
