@@ -31,6 +31,9 @@ type Config struct {
 	ByteDanceToken     string
 	ByteDanceCluster   string
 	ByteDanceVoiceType string
+	
+	// OpenAI TTS认证配置
+	OpenAITTSAPIKey string
 
 	// 超时配置
 	DialTimeout  time.Duration
@@ -62,6 +65,9 @@ func LoadConfig() *Config {
 		ByteDanceToken:     getEnv("BYTEDANCE_TTS_BEARER_TOKEN", "XXX"),
 		ByteDanceCluster:   getEnv("BYTEDANCE_TTS_CLUSTER", "xxxx"),
 		ByteDanceVoiceType: getEnv("BYTEDANCE_TTS_VOICE_TYPE", ""),
+		
+		// OpenAI TTS认证配置
+		OpenAITTSAPIKey: getEnv("OPENAI_TTS_API_KEY", ""),
 
 		// 超时配置
 		DialTimeout:  getEnvDuration("DIAL_TIMEOUT", 10*time.Second),
@@ -189,7 +195,30 @@ var (
 	ErrMessageReadFailed   = errors.New("failed to read message")
 	ErrResponseParseFailed = errors.New("failed to parse response")
 	ErrAudioWriteFailed    = errors.New("failed to write audio data")
+	ErrInvalidAPIKey       = errors.New("invalid API key format")
+	ErrUnauthorized        = errors.New("unauthorized access")
 )
+
+// isValidAPIKey 验证API密钥格式是否合法
+// 确保密钥不包含非法符号如括号等
+func isValidAPIKey(key string) bool {
+	// 检查密钥是否为空
+	if key == "" {
+		return false
+	}
+	
+	// 检查是否包含非法字符（括号等）
+	illegalChars := "[](){}<>()[]{}<>&^%$#@!~`\"'"  
+	for _, char := range key {
+		for _, illegal := range illegalChars {
+			if char == illegal {
+				return false
+			}
+		}
+	}
+	
+	return true
+}
 
 // 默认协议头部
 var defaultHeader = []byte{0x11, 0x10, 0x11, 0x00}
@@ -229,7 +258,7 @@ func init() {
 }
 
 // 设置字节跳动TTS请求参数
-func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, error) {
+func setupByteDanceInput(text, opt string, speed float64) ([]byte, error) {
 	// 验证文本长度
 	if len(text) > appConfig.MaxTextLength {
 		return nil, fmt.Errorf("%w: text length %d exceeds maximum allowed %d", 
@@ -240,8 +269,7 @@ func setupByteDanceInput(text, voiceType, opt string, speed float64) ([]byte, er
 	appID := appConfig.ByteDanceAppID
 	token := appConfig.ByteDanceToken
 	cluster := appConfig.ByteDanceCluster
-	// 只能使用环境变量中的voice_type
-	voiceType = appConfig.ByteDanceVoiceType
+	voiceType := appConfig.ByteDanceVoiceType
 
 	reqID := uuid.NewV4().String()
 	params := make(map[string]map[string]interface{})
@@ -393,7 +421,7 @@ func streamSynthesize(text, voiceType string, speed float64) ([]byte, error) {
 	}
 
 	// 设置输入参数
-	input, err := setupByteDanceInput(text, voiceType, optSubmit, speed)
+	input, err := setupByteDanceInput(text, optSubmit, speed)
 	if err != nil {
 		return nil, err
 	}
@@ -511,6 +539,35 @@ func handleOpenAITTSRequest(c *gin.Context) {
 		})
 		return
 	}
+	
+	// API密钥验证
+	apiKey := c.GetHeader("Authorization")
+	// 移除可能的Bearer前缀
+	if len(apiKey) > 7 && apiKey[:7] == "Bearer " {
+		apiKey = apiKey[7:]
+	}
+	
+	// 验证密钥格式
+	if !isValidAPIKey(apiKey) {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error:   "invalid_api_key",
+			Code:    http.StatusUnauthorized,
+			Message: "API key format is invalid, must not contain illegal characters",
+		})
+		return
+	}
+	
+	// 如果服务器配置了API密钥，则验证客户端密钥是否匹配
+	if appConfig.OpenAITTSAPIKey != "" {
+		if apiKey != appConfig.OpenAITTSAPIKey {
+			c.JSON(http.StatusUnauthorized, ErrorResponse{
+				Error:   "unauthorized",
+				Code:    http.StatusUnauthorized,
+				Message: "Invalid API key",
+			})
+			return
+		}
+	}
 
 	// 解析请求体
 	var req OpenAITTSRequest
@@ -591,6 +648,12 @@ func handleOpenAITTSRequest(c *gin.Context) {
 		case errors.Is(err, ErrWebSocketDialFailed):
 			statusCode = http.StatusServiceUnavailable
 			errorType = "upstream_service_unavailable"
+		case errors.Is(err, ErrInvalidAPIKey):
+			statusCode = http.StatusUnauthorized
+			errorType = "invalid_api_key"
+		case errors.Is(err, ErrUnauthorized):
+			statusCode = http.StatusUnauthorized
+			errorType = "unauthorized"
 		}
 
 		c.JSON(statusCode, ErrorResponse{
