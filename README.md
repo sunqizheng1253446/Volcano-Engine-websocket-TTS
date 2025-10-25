@@ -67,6 +67,7 @@ BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE
 | `BYTEDANCE_TTS_BEARER_TOKEN` | string | (必需) | 火山引擎认证令牌 |
 | `BYTEDANCE_TTS_CLUSTER` | string | (必需) | 火山引擎集群名称 |
 | `BYTEDANCE_TTS_VOICE_TYPE` | string | (必需) | 火山引擎语音类型 |
+| `OPENAI_TTS_API_KEY` | string | (可选) | OpenAI TTS API 访问密钥，用于验证客户端请求 |
 | `MAX_CONNECTIONS` | int | 100 | 最大并发连接数 |
 | `MAX_CONCURRENT_CALLS` | int | 10 | 最大并发调用数 |
 | `LOG_LEVEL` | string | `info` | 日志级别（debug, info, warn, error） |
