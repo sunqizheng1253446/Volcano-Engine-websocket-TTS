@@ -93,13 +93,17 @@ GET /health
 ```json
 {
   "status": "ok",
-  "active_connections": 5,
-  "max_connections": 100,
-  "current_calls": 3,
-  "max_concurrent_calls": 10,
-  "uptime_seconds": 120,
-  "cpu_usage": 0.1,
-  "memory_usage": 0.2
+  "uptime_seconds": 3600,
+  "active_connections": 10,
+  "current_calls": 5,
+  "avg_response_time": 120,
+  "success_rate": 99.5,
+  "error_count": 2,
+  "cpu_usage": 45.5,
+  "memory_usage": 60.2,
+  "request_count": 12345,
+  "version": "1.0.0",
+  "last_check_time": "2025-10-29T10:30:00Z"
 }
 ```
 
@@ -164,11 +168,17 @@ GET /health
 ```json
 {
   "status": "ok",
-  "active_connections": 5,
-  "max_connections": 100,
-  "current_calls": 3,
-  "max_concurrent_calls": 10,
-  "uptime_seconds": 120
+  "uptime_seconds": 3600,
+  "active_connections": 10,
+  "current_calls": 5,
+  "avg_response_time": 120,
+  "success_rate": 99.5,
+  "error_count": 2,
+  "cpu_usage": 45.5,
+  "memory_usage": 60.2,
+  "request_count": 12345,
+  "version": "1.0.0",
+  "last_check_time": "2025-10-29T10:30:00Z"
 }
 ```
 

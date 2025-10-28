@@ -20,18 +20,18 @@ var upgrader = websocket.Upgrader{
 
 // HealthResponse 健康检查响应结构
 type HealthResponse struct {
-	Status             string  `json:"status"`
-	UptimeSeconds      int64   `json:"uptime_seconds"`
-	ActiveConnections  int     `json:"active_connections"`
-	CurrentCalls       int     `json:"current_calls"`
-	AvgResponseTime    int     `json:"avg_response_time"`
-	SuccessRate        float64 `json:"success_rate"`
-	ErrorCount         int     `json:"error_count"`
-	CPUUsage           float64 `json:"cpu_usage"`
-	MemoryUsage        float64 `json:"memory_usage"`
-	RequestCount       int     `json:"request_count"`
-	Version            string  `json:"version"`
-	LastCheckTime      string  `json:"last_check_time"`
+	Status            string  `json:"status"`
+	UptimeSeconds     int64   `json:"uptime_seconds"`
+	ActiveConnections int     `json:"active_connections"`
+	CurrentCalls      int     `json:"current_calls"`
+	AvgResponseTime   int     `json:"avg_response_time"`
+	SuccessRate       float64 `json:"success_rate"`
+	ErrorCount        int     `json:"error_count"`
+	CPUUsage          float64 `json:"cpu_usage"`
+	MemoryUsage       float64 `json:"memory_usage"`
+	RequestCount      int     `json:"request_count"`
+	Version           string  `json:"version"`
+	LastCheckTime     string  `json:"last_check_time"`
 }
 
 // ErrorsResponse 错误信息响应结构
@@ -62,24 +62,65 @@ func handleHealthCheck(c *gin.Context) {
 
 	// 构建健康检查响应
 	response := HealthResponse{
-		Status:             "ok",
-		UptimeSeconds:      GlobalMetrics.GetUptime(),
-		ActiveConnections:  GlobalMetrics.GetActiveConnections(),
-		CurrentCalls:       GlobalMetrics.GetCurrentCalls(),
-		AvgResponseTime:    GlobalMetrics.GetAvgResponseTime(),
-		SuccessRate:        GlobalMetrics.GetSuccessRate(),
-		ErrorCount:         GlobalMetrics.GetErrorCount(),
-		CPUUsage:           GetCPUsage(),
-		MemoryUsage:        GetMemoryUsage(),
-		RequestCount:       GlobalMetrics.GetRequestCount(),
-		Version:            "1.0.0",
-		LastCheckTime:      time.Now().Format(time.RFC3339),
+		Status:            "ok",
+		UptimeSeconds:     GlobalMetrics.GetUptime(),
+		ActiveConnections: GlobalMetrics.GetActiveConnections(),
+		CurrentCalls:      GlobalMetrics.GetCurrentCalls(),
+		AvgResponseTime:   GlobalMetrics.GetAvgResponseTime(),
+		SuccessRate:       GlobalMetrics.GetSuccessRate(),
+		ErrorCount:        GlobalMetrics.GetErrorCount(),
+		CPUUsage:          GetCPUsage(),
+		MemoryUsage:       GetMemoryUsage(),
+		RequestCount:      GlobalMetrics.GetRequestCount(),
+		Version:           "1.0.0",
+		LastCheckTime:     time.Now().Format(time.RFC3339),
 	}
 
 	c.JSON(http.StatusOK, response)
 }
 
+// handleErrors 处理错误信息请求
+func handleErrors(c *gin.Context) {
+	// 验证API密钥（如果配置了）
+	if !validateAPIKey(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
+	// 获取错误记录
+	errorRecords := GlobalMetrics.GetErrorRecords()
+
+	// 构建错误信息响应
+	response := ErrorsResponse{
+		ErrorRecords: errorRecords,
+		Count:        len(errorRecords),
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// handleMetrics 处理性能指标请求
+func handleMetrics(c *gin.Context) {
+	// 验证API密钥（如果配置了）
+	if !validateAPIKey(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// 构建性能指标响应
+	response := MetricsResponse{
+		AvgResponseTime:   GlobalMetrics.GetAvgResponseTime(),
+		SuccessRate:       GlobalMetrics.GetSuccessRate(),
+		UptimeSeconds:     GlobalMetrics.GetUptime(),
+		ActiveConnections: GlobalMetrics.GetActiveConnections(),
+		CurrentCalls:      GlobalMetrics.GetCurrentCalls(),
+		CPUUsage:          GetCPUsage(),
+		MemoryUsage:       GetMemoryUsage(),
+		RequestCount:      GlobalMetrics.GetRequestCount(),
+	}
+
+	c.JSON(http.StatusOK, response)
+}
 
 // handleWebSocket 处理WebSocket连接请求
 func handleWebSocket(c *gin.Context) {
@@ -130,7 +171,7 @@ func handleWebSocket(c *gin.Context) {
 		case <-ticker.C:
 			// 构建实时数据
 			liveData := gin.H{
-				"timestamp":         time.Now().Format(time.RFC3339),
+				"timestamp":          time.Now().Format(time.RFC3339),
 				"active_connections": GlobalMetrics.GetActiveConnections(),
 				"current_calls":      GlobalMetrics.GetCurrentCalls(),
 				"cpu_usage":          GetCPUsage(),
@@ -180,6 +221,14 @@ func setupMonitoringRoutes(router *gin.Engine) {
 	{
 		monitoring.GET("/health", handleHealthCheck)
 		monitoring.GET("/ws", handleWebSocket)
+	}
+
+	// API路由组（符合规范要求）
+	api := router.Group("/api")
+	{
+		api.GET("/health", handleHealthCheck)
+		api.GET("/errors", handleErrors)
+		api.GET("/metrics", handleMetrics)
 	}
 
 	// 保留原有健康检查端点的兼容性
