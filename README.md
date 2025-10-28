@@ -10,10 +10,11 @@
 - 自动转换为火山引擎 TTS WebSocket 协议
 - 流式响应处理
 - 并发连接和调用限制
-- 健康检查端点
+- 多维度监控 API 模块
+- WebSocket 实时监控数据流
 - 环境变量配置
 - 完善的错误处理
-- 服务运行状态监控
+- 详细的服务运行状态统计
 
 ## 快速开始
 
@@ -78,6 +79,51 @@ BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE
 你可以创建一个 `.env` 文件来管理环境变量。示例文件参见 `.env.example`。
 
 ## API 使用
+
+### 监控 API 接口
+
+#### 健康检查端点
+
+```
+GET /health
+```
+
+返回服务状态信息：
+
+```json
+{
+  "status": "ok",
+  "active_connections": 5,
+  "max_connections": 100,
+  "current_calls": 3,
+  "max_concurrent_calls": 10,
+  "uptime_seconds": 120,
+  "cpu_usage": 0.1,
+  "memory_usage": 0.2
+}
+```
+
+#### 监控模块端点
+
+```
+GET /monitoring/health
+```
+
+与 `/health` 端点功能相同，提供服务健康状态。
+
+#### WebSocket 实时监控
+
+```
+GET /monitoring/ws
+```
+
+WebSocket 连接建立后，服务会每 10 秒推送一次实时监控数据，包含：
+
+- 时间戳
+- 活动连接数
+- 当前并发调用数
+- CPU 使用率
+- 内存使用率
 
 ### OpenAI 风格 TTS WebSocket API
 
@@ -153,13 +199,15 @@ GET /health
 
 ## 监控指标
 
-健康检查端点提供以下监控指标：
+服务提供全面的监控指标，包括：
 
-- 活动连接数
-- 最大连接数
-- 当前并发调用数
-- 最大并发调用数
-- 服务运行时间（秒）
+- **连接指标**：活动连接数、最大连接限制
+- **调用指标**：当前并发调用数、最大并发调用限制
+- **系统指标**：CPU 使用率、内存使用率
+- **性能指标**：平均响应时间、请求成功率
+- **时间指标**：服务运行时间、请求时间戳
+
+这些指标可通过健康检查端点和 WebSocket 实时监控接口获取。
 
 ## 部署建议
 
@@ -167,6 +215,8 @@ GET /health
 - 部署在支持 WebSocket 的环境中
 - 配置适当的连接和调用限制以防止资源耗尽
 - 考虑使用反向代理（如 Nginx）进行负载均衡
+- 定期监控服务指标以确保稳定性
+- 配置适当的日志级别以便故障排查
 
 ## 许可证
 

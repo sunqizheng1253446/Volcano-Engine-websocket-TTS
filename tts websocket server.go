@@ -179,6 +179,8 @@ var activeConnections atomic.Int32 // 使用原子计数器替代WaitGroup
 var semaphore chan struct{}        // 用于控制并发调用数量
 var startTime time.Time            // 服务启动时间
 
+
+
 // 协议相关常量
 const (
 	optSubmit string = "submit"
@@ -419,7 +421,13 @@ func streamSynthesize(text, voiceType string, speed float64) ([]byte, error) {
 	// 获取并发控制信号量
 	select {
 	case semaphore <- struct{}{}:
-		defer func() { <-semaphore }()
+		// 增加当前并发调用计数
+		GlobalMetrics.IncCurrentCalls()
+		defer func() {
+			<-semaphore
+			// 减少当前并发调用计数
+			GlobalMetrics.DecCurrentCalls()
+		}()
 	default:
 		return nil, fmt.Errorf("%w: maximum concurrent calls (%d) reached",
 			ErrTooManyConnections, appConfig.MaxConcurrentCalls)
@@ -534,12 +542,17 @@ type ErrorResponse struct {
 // 处理OpenAI TTS请求的处理函数
 func handleOpenAITTSRequest(c *gin.Context) {
 	// 增加活动连接计数
-	activeConnections.Add(1)
-	defer activeConnections.Add(-1)
+	GlobalMetrics.IncActiveConnections()
+	defer GlobalMetrics.DecActiveConnections()
 
 	// 验证并发连接数
-	currentConnections := activeConnections.Load()
-	if currentConnections > int32(appConfig.MaxConnections) {
+	currentConnections := GlobalMetrics.GetActiveConnections()
+	if currentConnections > appConfig.MaxConnections {
+		// 记录请求（失败）
+		responseTime := time.Since(startTime).Milliseconds()
+		GlobalMetrics.RecordRequest(false, responseTime)
+		GlobalMetrics.RecordError("connection_limit", fmt.Sprintf("Too many concurrent connections, maximum is %d", appConfig.MaxConnections))
+		
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{
 			Error:   "service_overloaded",
 			Code:    http.StatusServiceUnavailable,
@@ -671,6 +684,10 @@ func handleOpenAITTSRequest(c *gin.Context) {
 			Code:    statusCode,
 			Message: err.Error(),
 		})
+		// 记录请求（失败）
+		responseTime := time.Since(startTime).Milliseconds()
+		GlobalMetrics.RecordRequest(false, responseTime)
+		GlobalMetrics.RecordError(errorType, err.Error())
 		return
 	}
 
@@ -683,29 +700,13 @@ func handleOpenAITTSRequest(c *gin.Context) {
 
 	// 刷新缓冲区
 	c.Writer.Flush()
+	
+	// 记录请求（成功）
+	responseTime := time.Since(startTime).Milliseconds()
+	GlobalMetrics.RecordRequest(true, responseTime)
 }
 
-// 健康检查端点
-func healthCheck(c *gin.Context) {
-	// 获取当前活动连接数
-	activeConns := activeConnections.Load()
-
-	// 获取当前并发调用数
-	currentCalls := len(semaphore)
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":               "ok",
-		"timestamp":            time.Now().Unix(),
-		"timestamp_iso":        time.Now().Format(time.RFC3339),
-		"service":              "TTS-Transit-Service",
-		"version":              "1.0.0",
-		"active_connections":   activeConns,
-		"max_connections":      appConfig.MaxConnections,
-		"current_calls":        currentCalls,
-		"max_concurrent_calls": appConfig.MaxConcurrentCalls,
-		"uptime_seconds":       int(time.Since(startTime).Seconds()),
-	})
-}
+// 移除旧的健康检查函数，使用监控模块中的实现
 
 // 设置路由
 func setupRoutes(router *gin.Engine) {
@@ -729,8 +730,8 @@ func setupRoutes(router *gin.Engine) {
 		c.Next()
 	}))
 
-	// 健康检查端点
-	router.GET("/health", healthCheck)
+	// 保持原有的健康检查路由兼容性，但实际使用监控模块中的实现
+	router.GET("/health", handleHealthCheck)
 
 	// OpenAI TTS API兼容端点
 	router.POST("/v1/audio/speech", handleOpenAITTSRequest)
