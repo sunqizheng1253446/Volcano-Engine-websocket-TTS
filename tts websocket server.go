@@ -179,8 +179,6 @@ var activeConnections atomic.Int32 // 使用原子计数器替代WaitGroup
 var semaphore chan struct{}        // 用于控制并发调用数量
 var startTime time.Time            // 服务启动时间
 
-
-
 // 协议相关常量
 const (
 	optSubmit string = "submit"
@@ -552,7 +550,7 @@ func handleOpenAITTSRequest(c *gin.Context) {
 		responseTime := time.Since(startTime).Milliseconds()
 		GlobalMetrics.RecordRequest(false, responseTime)
 		GlobalMetrics.RecordError("connection_limit", fmt.Sprintf("Too many concurrent connections, maximum is %d", appConfig.MaxConnections))
-		
+
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{
 			Error:   "service_overloaded",
 			Code:    http.StatusServiceUnavailable,
@@ -700,7 +698,7 @@ func handleOpenAITTSRequest(c *gin.Context) {
 
 	// 刷新缓冲区
 	c.Writer.Flush()
-	
+
 	// 记录请求（成功）
 	responseTime := time.Since(startTime).Milliseconds()
 	GlobalMetrics.RecordRequest(true, responseTime)
@@ -749,6 +747,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 初始化监控模块
+	initMetrics()
+
 	// 设置Gin模式
 	if appConfig.LogLevel == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -765,6 +766,7 @@ func main() {
 
 	// 设置路由
 	setupRoutes(router)
+	setupMonitoringRoutes(router)
 
 	// 启动服务器
 	serverAddr := fmt.Sprintf("%s:%s", appConfig.ServerHost, appConfig.ServerPort)
