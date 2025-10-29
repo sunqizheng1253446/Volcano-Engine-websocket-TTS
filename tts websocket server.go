@@ -744,7 +744,11 @@ func main() {
 		fmt.Println("Please set the missing environment variables before starting the service.")
 		fmt.Println("Example usage:")
 		fmt.Println("  BYTEDANCE_TTS_APP_ID=your_app_id BYTEDANCE_TTS_BEARER_TOKEN=your_token BYTEDANCE_TTS_CLUSTER=your_cluster BYTEDANCE_TTS_VOICE_TYPE=your_voice_type ./tts_websocket_server")
-		os.Exit(1)
+
+		// 在容器环境中，为了避免无限重启循环，我们启动一个最小化的HTTP服务器来提供错误信息
+		fmt.Println("Starting minimal HTTP server to provide error information...")
+		startMinimalServer()
+		return
 	}
 
 	// 设置Gin模式
@@ -782,4 +786,42 @@ func main() {
 		fmt.Printf("Failed to start server: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// startMinimalServer 启动一个最小化的HTTP服务器来提供错误信息，避免容器无限重启
+func startMinimalServer() {
+	router := gin.New()
+
+	// 健康检查端点，返回配置错误信息
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":  "error",
+			"message": "Service is not properly configured",
+			"details": "Missing required environment variables. Check logs for details.",
+		})
+	})
+
+	// 根API端点也返回错误信息
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":  "error",
+			"message": "Service is not properly configured",
+			"details": "Missing required environment variables. Check logs for details.",
+		})
+	})
+
+	// TTS端点也返回错误信息
+	router.POST("/v1/audio/speech", func(c *gin.Context) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":  "error",
+			"message": "Service is not properly configured",
+			"details": "Missing required environment variables. Check logs for details.",
+		})
+	})
+
+	serverAddr := fmt.Sprintf("%s:%s", appConfig.ServerHost, appConfig.ServerPort)
+	fmt.Printf("Starting minimal HTTP server on %s to report configuration error\n", serverAddr)
+
+	// 启动服务器但不处理错误，因为这是在错误状态下运行的
+	_ = router.Run(serverAddr)
 }
