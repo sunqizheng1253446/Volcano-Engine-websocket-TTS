@@ -747,9 +747,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 初始化监控模块
-	initMetrics()
-
 	// 设置Gin模式
 	if appConfig.LogLevel == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -766,7 +763,6 @@ func main() {
 
 	// 设置路由
 	setupRoutes(router)
-	setupMonitoringRoutes(router)
 
 	// 启动服务器
 	serverAddr := fmt.Sprintf("%s:%s", appConfig.ServerHost, appConfig.ServerPort)

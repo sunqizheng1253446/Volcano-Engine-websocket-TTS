@@ -231,6 +231,6 @@ func setupMonitoringRoutes(router *gin.Engine) {
 		api.GET("/metrics", handleMetrics)
 	}
 
-	// 保留原有健康检查端点的兼容性
-	router.GET("/health", handleHealthCheck)
+	// 注意：不在这里注册根路径的 /health 路由，因为在主服务文件中已经注册过了
+	// 避免重复注册导致的 panic
 }
