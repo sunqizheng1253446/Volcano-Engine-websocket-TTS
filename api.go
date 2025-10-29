@@ -221,7 +221,7 @@ func setupMonitoringRoutes(router *gin.Engine) {
 	monitoring := router.Group("/monitoring")
 	{
 		monitoring.GET("/health", handleHealthCheck)
-		monitoring.GET("/ws", handleWebSocket)
+		monitoring.GET("/websocket", handleWebSocket) // 修正WebSocket路径以匹配API规范
 	}
 
 	// API路由组（符合规范要求）
@@ -230,6 +230,8 @@ func setupMonitoringRoutes(router *gin.Engine) {
 		api.GET("/health", handleHealthCheck)
 		api.GET("/errors", handleErrors)
 		api.GET("/metrics", handleMetrics)
+		// 注意：API规范文档中定义的WebSocket路径是 /api/websocket
+		api.GET("/websocket", handleWebSocket) // 添加/api/websocket路径以匹配API规范
 	}
 
 	// 注意：不在这里注册根路径的 /health 路由，因为在主服务文件中已经注册过了

@@ -174,8 +174,8 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 }
 
 var byteDanceURL *url.URL
-var semaphore chan struct{}        // 用于控制并发调用数量
-var startTime time.Time            // 服务启动时间
+var semaphore chan struct{} // 用于控制并发调用数量
+var startTime time.Time     // 服务启动时间
 
 // 协议相关常量
 const (
