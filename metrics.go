@@ -4,6 +4,9 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 // Metrics 存储系统监控指标
@@ -167,18 +170,28 @@ func (m *Metrics) GetErrorRecords() []ErrorRecord {
 	return records
 }
 
-// GetCPUsage 获取CPU使用率（模拟）
+// GetCPUsage 获取CPU使用率（实际值）
 func GetCPUsage() float64 {
-	// 这里使用简单的模拟实现
-	// 在真实环境中，可以使用系统调用获取实际CPU使用率
-	return 45.5
+	// 获取CPU使用率，间隔时间为0表示立即返回
+	cpuPercent, err := cpu.Percent(0, false)
+	if err != nil || len(cpuPercent) == 0 {
+		// 如果获取失败，返回默认值
+		return 0.0
+	}
+	return cpuPercent[0]
 }
 
-// GetMemoryUsage 获取内存使用率
+// GetMemoryUsage 获取内存使用率（实际值）
 func GetMemoryUsage() float64 {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	// 计算内存使用率（简化版）
-	// 在真实环境中可能需要获取系统总内存
-	return float64(m.Alloc) / 1024 / 1024 // 转换为MB
+	// 获取虚拟内存统计信息
+	vmStat, err := mem.VirtualMemory()
+	if err != nil {
+		// 如果获取失败，使用runtime包获取的值并转换为MB
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return float64(m.Alloc) / 1024 / 1024 // 转换为MB
+	}
+
+	// 返回内存使用率百分比
+	return vmStat.UsedPercent
 }
