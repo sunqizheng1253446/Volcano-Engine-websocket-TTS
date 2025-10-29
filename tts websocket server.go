@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -175,7 +174,6 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 }
 
 var byteDanceURL *url.URL
-var activeConnections atomic.Int32 // 使用原子计数器替代WaitGroup
 var semaphore chan struct{}        // 用于控制并发调用数量
 var startTime time.Time            // 服务启动时间
 
@@ -737,6 +735,9 @@ func setupRoutes(router *gin.Engine) {
 
 // 主函数
 func main() {
+	// 初始化监控模块
+	initMetrics()
+
 	// 验证配置
 	err := appConfig.ValidateConfig()
 	if err != nil {
@@ -768,11 +769,19 @@ func main() {
 	// 设置路由
 	setupRoutes(router)
 
+	// 设置监控相关路由
+	setupMonitoringRoutes(router)
+
 	// 启动服务器
 	serverAddr := fmt.Sprintf("%s:%s", appConfig.ServerHost, appConfig.ServerPort)
 	fmt.Printf("Starting TTS Transit Service on %s\n", serverAddr)
 	fmt.Printf("Health check: http://%s/health\n", serverAddr)
 	fmt.Printf("TTS endpoint: http://%s/v1/audio/speech\n", serverAddr)
+	fmt.Printf("Monitoring endpoints:\n")
+	fmt.Printf("  - Health check: http://%s/api/health\n", serverAddr)
+	fmt.Printf("  - Metrics: http://%s/api/metrics\n", serverAddr)
+	fmt.Printf("  - Errors: http://%s/api/errors\n", serverAddr)
+	fmt.Printf("  - WebSocket monitoring: ws://%s/api/ws\n", serverAddr)
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  - Max Connections: %d\n", appConfig.MaxConnections)
 	fmt.Printf("  - Max Concurrent Calls: %d\n", appConfig.MaxConcurrentCalls)

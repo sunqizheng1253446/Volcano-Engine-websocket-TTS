@@ -215,6 +215,7 @@ func validateAPIKey(c *gin.Context) bool {
 }
 
 // setupMonitoringRoutes 设置监控相关路由
+// 注意：此函数在主程序的 main 函数中被调用
 func setupMonitoringRoutes(router *gin.Engine) {
 	// 监控API路由组
 	monitoring := router.Group("/monitoring")

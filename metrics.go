@@ -8,15 +8,15 @@ import (
 
 // Metrics 存储系统监控指标
 type Metrics struct {
-	mu               sync.RWMutex
-	startTime        time.Time
-	requestCount     int
-	successCount     int
-	errorCount       int
+	mu                sync.RWMutex
+	startTime         time.Time
+	requestCount      int
+	successCount      int
+	errorCount        int
 	activeConnections int
-	currentCalls     int
+	currentCalls      int
 	totalResponseTime int64
-	errors           []ErrorRecord
+	errors            []ErrorRecord
 }
 
 // ErrorRecord 错误记录
@@ -30,6 +30,7 @@ type ErrorRecord struct {
 var GlobalMetrics *Metrics
 
 // 初始化监控模块
+// 注意：此函数在主程序的 main 函数中被调用
 func initMetrics() {
 	GlobalMetrics = &Metrics{
 		startTime: time.Now(),
@@ -62,7 +63,7 @@ func (m *Metrics) RecordError(errorType, message string) {
 		Message:   message,
 	}
 	m.errors = append(m.errors, record)
-	
+
 	// 限制错误记录数量
 	if len(m.errors) > 100 {
 		m.errors = m.errors[len(m.errors)-100:]
@@ -110,7 +111,7 @@ func (m *Metrics) GetUptime() int64 {
 func (m *Metrics) GetSuccessRate() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if m.requestCount == 0 {
 		return 100.0
 	}
@@ -121,7 +122,7 @@ func (m *Metrics) GetSuccessRate() float64 {
 func (m *Metrics) GetAvgResponseTime() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if m.requestCount == 0 {
 		return 0
 	}
