@@ -175,7 +175,6 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 
 var byteDanceURL *url.URL
 var semaphore chan struct{} // 用于控制并发调用数量
-var startTime time.Time     // 服务启动时间
 
 // 协议相关常量
 const (
@@ -237,9 +236,6 @@ type SynthResp struct {
 
 // 初始化函数
 func init() {
-	// 记录服务启动时间
-	startTime = time.Now()
-
 	// 初始化应用配置
 	appConfig = LoadConfig()
 
@@ -537,6 +533,9 @@ type ErrorResponse struct {
 
 // 处理OpenAI TTS请求的处理函数
 func handleOpenAITTSRequest(c *gin.Context) {
+	// 记录请求开始时间
+	requestStartTime := time.Now()
+
 	// 增加活动连接计数
 	GlobalMetrics.IncActiveConnections()
 	defer GlobalMetrics.DecActiveConnections()
@@ -545,7 +544,7 @@ func handleOpenAITTSRequest(c *gin.Context) {
 	currentConnections := GlobalMetrics.GetActiveConnections()
 	if currentConnections > appConfig.MaxConnections {
 		// 记录请求（失败）
-		responseTime := time.Since(startTime).Milliseconds()
+		responseTime := time.Since(requestStartTime).Milliseconds()
 		GlobalMetrics.RecordRequest(false, responseTime)
 		GlobalMetrics.RecordError("connection_limit", fmt.Sprintf("Too many concurrent connections, maximum is %d", appConfig.MaxConnections))
 
@@ -681,7 +680,7 @@ func handleOpenAITTSRequest(c *gin.Context) {
 			Message: err.Error(),
 		})
 		// 记录请求（失败）
-		responseTime := time.Since(startTime).Milliseconds()
+		responseTime := time.Since(requestStartTime).Milliseconds()
 		GlobalMetrics.RecordRequest(false, responseTime)
 		GlobalMetrics.RecordError(errorType, err.Error())
 		return
@@ -698,7 +697,7 @@ func handleOpenAITTSRequest(c *gin.Context) {
 	c.Writer.Flush()
 
 	// 记录请求（成功）
-	responseTime := time.Since(startTime).Milliseconds()
+	responseTime := time.Since(requestStartTime).Milliseconds()
 	GlobalMetrics.RecordRequest(true, responseTime)
 }
 
